@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "events": {
+    "project.match_abandoned": {
+      "event_schema_version": 1,
+      "description": "A match was left before finishing (back to menu or page closed).",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "answered": {
+            "type": "integer"
+          },
+          "category": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "category",
+          "answered"
+        ],
+        "type": "object"
+      }
+    },
+    "project.match_completed": {
+      "event_schema_version": 1,
+      "description": "A quiz match finished; one event per player slot.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "correct": {
+            "type": "integer"
+          },
+          "max_streak": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "player_slot": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "wrong": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "category",
+          "player_slot",
+          "correct",
+          "wrong",
+          "total",
+          "points",
+          "max_streak"
+        ],
+        "type": "object"
+      }
+    },
+    "project.match_started": {
+      "event_schema_version": 1,
+      "description": "A quiz match started.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "players_count": {
+            "type": "integer"
+          },
+          "questions_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "category",
+          "players_count",
+          "questions_count"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

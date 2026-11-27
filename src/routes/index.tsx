@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { generateQuiz } from "@/lib/ai-quiz.functions";
 import { useEffect, useMemo, useState } from "react";
 import { CATEGORIES, type CategoryId, type Question } from "@/lib/questions";
 import {
@@ -25,8 +27,11 @@ type Screen = "menu" | "play" | "result" | "ranking";
 interface Game {
   mode: Mode; category: CategoryId; players: string[]; questions: Question[];
   index: number; scores: { correct: number; points: number; streak: number; maxStreak: number }[];
-  feedback: { chosen: Letter; ok: boolean } | null; over: boolean;
+  feedback: { chosen: Letter; ok: boolean } | null; over: boolean; ai: boolean;
 }
+
+const track = (e: string, p: Record<string, unknown>) => window.__lovableEvents?.track?.(e, p);
+const gameProps = (g: Game) => ({ mode: g.mode, category: g.ai ? "ia" : g.mode === "aleatorio" ? "aleatorio" : g.category });
 interface Outcome { records: MatchRecord[]; unlocked: Record<string, string[]> }
 
 const LETTERS: Letter[] = ["A", "B", "C", "D"];
@@ -44,15 +49,48 @@ function Index() {
   const [err, setErr] = useState("");
   const [typed, setTyped] = useState("");
 
+  const [theme, setTheme] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const genQuiz = useServerFn(generateQuiz);
+
+  const begin = (questions: Question[], ai: boolean) => {
+    const players = [name.trim(), ...(mode === "duelo" ? [name2.trim()] : [])];
+    const g: Game = {
+      mode, category, players, questions, index: 0,
+      scores: players.map(() => ({ correct: 0, points: 0, streak: 0, maxStreak: 0 })), feedback: null, over: false, ai,
+    };
+    setGame(g); setScreen("play");
+    track("project.match_started", { ...gameProps(g), players_count: players.length, questions_count: questions.length });
+  };
+
+  const startAi = async () => {
+    if (!name.trim() || (mode === "duelo" && !name2.trim())) return setErr("> ERRO: informe o nome do jogador.");
+    if (theme.trim().length < 2) return setErr("> ERRO: informe um tema com ao menos 2 letras.");
+    setErr(""); setAiLoading(true);
+    try {
+      const r = await genQuiz({ data: { theme } });
+      if (r.error || !r.questions.length) return setErr("> " + (r.error ?? "Falha ao gerar."));
+      begin(r.questions, true);
+    } catch { setErr("> Não foi possível gerar o quiz."); } finally { setAiLoading(false); }
+  };
+
+  const goMenu = () => {
+    if (screen === "play" && game) track("project.match_abandoned", { ...gameProps(game), answered: game.index + (game.feedback ? 1 : 0) });
+    setScreen("menu");
+  };
+
+  useEffect(() => {
+    if (screen !== "play" || !game) return;
+    const h = () => track("project.match_abandoned", { ...gameProps(game), answered: game.index + (game.feedback ? 1 : 0) });
+    window.addEventListener("pagehide", h);
+    return () => window.removeEventListener("pagehide", h);
+  }, [screen, game]);
+
   const start = () => {
     const players = [name.trim(), ...(mode === "duelo" ? [name2.trim()] : [])];
     if (players.some((p) => !p)) return setErr("> ERRO: informe o nome do jogador.");
     setErr("");
-    setGame({
-      mode, category, players, questions: buildQuestions(category, mode), index: 0,
-      scores: players.map(() => ({ correct: 0, points: 0, streak: 0, maxStreak: 0 })), feedback: null, over: false,
-    });
-    setScreen("play");
+    begin(buildQuestions(category, mode), false);
   };
 
   const answer = (raw: string) => {
@@ -92,6 +130,7 @@ function Index() {
       s.profiles[key] = r.profile; s.history.unshift(rec); records.push(rec); unlocked[p] = r.unlocked;
     });
     s.history = s.history.slice(0, 100);
+    records.forEach((rec, i) => track("project.match_completed", { ...gameProps(g), player_slot: i + 1, correct: rec.correct, wrong: rec.total - rec.correct, total: rec.total, points: rec.points, max_streak: rec.maxStreak }));
     setStore(s); saveStore(s); setOutcome({ records, unlocked }); setScreen("result");
   };
 
@@ -112,7 +151,7 @@ function Index() {
     <main className="crt min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-3xl px-4 py-8">
         <header className="mb-6 border-b border-border pb-4">
-          <button onClick={() => setScreen("menu")} className="text-left">
+          <button onClick={goMenu} className="text-left">
             <h1 className="font-display text-5xl leading-none text-primary glow-text sm:text-6xl">DART QUIZ UNIVERSE</h1>
           </button>
           <p className="mt-1 text-sm text-secondary">"Conhecimento é poder. Cada pergunta é um novo desafio!"</p>
@@ -159,6 +198,17 @@ function Index() {
               </Panel>
             )}
 
+            <Panel title="✨ Quiz personalizado com IA">
+              <label className="block text-sm text-muted-foreground">$ tema ou interesse (usa o modo escolhido acima)</label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <input value={theme} onChange={(e) => setTheme(e.target.value)} maxLength={80} placeholder="Ex.: Pokémon, Egito Antigo, Fórmula 1"
+                  className="min-w-0 flex-1 border border-input bg-muted px-3 py-2 text-primary outline-none focus:border-primary" />
+                <button onClick={startAi} disabled={aiLoading} className="border border-accent px-4 py-2 text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
+                  {aiLoading ? "Gerando..." : "Gerar e jogar"}
+                </button>
+              </div>
+            </Panel>
+
             {err && <p className="text-destructive">{err}</p>}
             <div className="flex flex-wrap gap-3">
               <button onClick={start} className="bg-primary px-6 py-3 font-bold text-primary-foreground shadow-glow hover:brightness-110">▶ INICIAR</button>
@@ -174,7 +224,7 @@ function Index() {
           return (
             <section key={game.index} className="rise space-y-4">
               <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-                <span>{MODES.find((m) => m.id === game.mode)!.name} · {cat.icon} {cat.name} · {DIFF_LABEL[q.difficulty]} (+{pointsFor(q, game.mode)})</span>
+                <span>{MODES.find((m) => m.id === game.mode)!.name} · {game.ai ? "✨ IA" : `${cat.icon} ${cat.name}`} · {DIFF_LABEL[q.difficulty]} (+{pointsFor(q, game.mode)})</span>
                 <span>Pergunta {game.index + 1}{game.mode === "sobrevivencia" ? "" : `/${game.questions.length}`}</span>
               </div>
               <div className="flex flex-wrap gap-3">
